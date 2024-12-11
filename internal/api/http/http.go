@@ -51,9 +51,11 @@ func errorResponse(w http.ResponseWriter, status int, err string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	jsonResponse(w, map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"error": err,
-	})
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func jsonResponse(w http.ResponseWriter, data interface{}) {

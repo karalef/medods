@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"os"
 	"os/signal"
@@ -9,6 +10,7 @@ import (
 
 	httpapi "medods-test/internal/api/http"
 	"medods-test/internal/jwt"
+	"medods-test/internal/mail"
 	"medods-test/internal/service"
 
 	"github.com/jackc/pgx/v5"
@@ -31,8 +33,14 @@ func main() {
 		panic(err)
 	}
 
-	signer := jwt.NewSigner(15*time.Minute, []byte(os.Getenv("SECRET")))
-	api := httpapi.New(service.NewService(ctx, signer, db))
+	secret, err := base64.StdEncoding.DecodeString(os.Getenv("SECRET"))
+	if err != nil {
+		panic(err)
+	}
+
+	signer := jwt.NewSigner(15*time.Minute, secret)
+	mailer, _ := mail.NewMock()
+	api := httpapi.New(service.NewService(ctx, signer, mailer, db))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

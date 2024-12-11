@@ -1,18 +1,15 @@
 FROM golang:1.23 as builder
 
-WORKDIR /app
-
-COPY go.mod go.sum ./
-RUN go mod download
+WORKDIR /go/src/medods
 
 COPY . .
 
-RUN go build -o app main.go
+RUN CGO_ENABLED=0 go build -o /go/bin/medods ./cmd/main.go
 
 FROM gcr.io/distroless/base-debian11
 
-COPY --from=builder /app/app /app/app
+COPY --from=builder /go/bin/medods /
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/app"]
+ENTRYPOINT ["/medods"]
