@@ -3,26 +3,37 @@ services:
     build: .
     ports:
       - "8080:8080"
+    restart: no
     depends_on:
-      - migrate
+      db:
+        condition: service_healthy
+    networks:
+      - postgres-network
     environment:
       PORT: 8080
       SECRET: ${SECRET}
       DB_URL: postgres://postgres:postgres@db:5432/medods_test_task
-  migrate:
-    image: migrate/migrate
-    depends_on:
-      - db
-    volumes:
-      - ./migrations:/migrations
-    command:
-      [ "-path", "/migrations", "-database",  "postgres://postgres:postgres@db:5432/medods_test_task?sslmode=disable", "up" ]
   db:
+    container_name: medods_postgres
     image: postgres:17
     restart: always
     ports:
       - "5432:5432"
+    networks:
+      - postgres-network
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: medods_test_task
+    volumes:
+      - ${PWD}/database/data/:/var/lib/postgresql/data/
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks: 
+  postgres-network:
+    driver: bridge

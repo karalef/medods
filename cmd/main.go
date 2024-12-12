@@ -10,49 +10,43 @@ import (
 
 	httpapi "medods-test/internal/api/http"
 	"medods-test/internal/jwt"
-	"medods-test/internal/mail"
-	"medods-test/internal/service"
+	"medods-test/internal/mail/mockmail"
+	servicev0 "medods-test/internal/service/v0"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-/*
-.env
-
-SECRET
-PORT
-DB_URL
-*/
+func init() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Logger.Level(zerolog.InfoLevel)
+}
 
 func main() {
-	ctx, stopSignal := signal.NotifyContext(context.Background(), os.Interrupt)
+	addr := ":" + os.Getenv("PORT")
+	logger := &log.Logger
+	logger.Info().Str("addr", addr).Msg("starting")
+	ctx := logger.WithContext(context.Background())
+
+	ctx, stopSignal := signal.NotifyContext(ctx, os.Interrupt)
 	defer stopSignal()
 
 	db, err := pgx.Connect(ctx, os.Getenv("DB_URL")+"?sslmode=disable")
 	if err != nil {
-		panic(err)
+		logger.Error().Err(err).Msg("failed to connect to db")
+		os.Exit(1)
 	}
 
 	secret, err := base64.StdEncoding.DecodeString(os.Getenv("SECRET"))
 	if err != nil {
-		panic(err)
+		panic("invalid secret")
 	}
 
 	signer := jwt.NewSigner(15*time.Minute, secret)
-	mailer, _ := mail.NewMock()
-	api := httpapi.New(service.NewService(ctx, signer, mailer, db))
+	api := httpapi.New(servicev0.NewService(ctx, signer, mockmail.New(), db), logger)
+	server := httpapi.NewServer(api, addr)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("GET /auth", api.Auth)
-	mux.HandleFunc("GET /refresh", api.Refresh)
-
-	server := http.Server{
-		Addr:    ":" + os.Getenv("PORT"),
-		Handler: mux,
-	}
 	go func() {
 		<-ctx.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -61,6 +55,7 @@ func main() {
 	}()
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		panic(err)
+		logger.Error().Err(err).Msg("server stopped with error")
+		os.Exit(1)
 	}
 }
